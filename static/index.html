@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Triage3AM | Finding the Signal in 10,000 Log Lines</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="dark-theme">
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="logo-group">
+      <div class="pulse-indicator">
+        <span class="pulse-dot"></span>
+        <span class="pulse-ring"></span>
+      </div>
+      <div>
+        <h1 class="logo-title">Triage<span>3AM</span></h1>
+        <p class="logo-subtitle">Protothon 2026 &bull; Observability & AIOps Outage Triage</p>
+      </div>
+    </div>
+
+    <!-- Quick 1-Click Demo Presets -->
+    <div class="presets-toolbar">
+      <span class="preset-label">⚡ 1-Click Presets:</span>
+      <button class="preset-btn" id="btnPreset1" onclick="loadPreset('ecommerce_cascade_10k.log')">
+        <span class="badge red">10k lines</span> DB Pool Starvation
+      </button>
+      <button class="preset-btn" id="btnPreset2" onclick="loadPreset('k8s_oom_cascade_10k.log')">
+        <span class="badge amber">10k lines</span> K8s OOM & CrashLoop
+      </button>
+    </div>
+
+    <div class="header-actions">
+      <div class="live-clock" id="liveClock">03:00:00 UTC</div>
+      <button class="btn btn-secondary" onclick="exportSlackReport()">
+        📋 Copy Slack Brief
+      </button>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <!-- Log Input & Upload Section -->
+    <section class="ingestion-section">
+      <div class="ingestion-card">
+        <div class="card-header">
+          <div class="header-left">
+            <span class="terminal-dots">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+            </span>
+            <span class="card-title">Raw Log Stream Ingestion (Drain Algorithm & Rule-Free Template Mining)</span>
+          </div>
+          <div class="header-right">
+            <span class="stat-pill" id="lineCounter">0 lines loaded</span>
+            <label class="btn-file-upload">
+              📁 Upload .log / .txt
+              <input type="file" id="fileInput" accept=".log,.txt,.jsonl" onchange="handleFileUpload(event)">
+            </label>
+            <button class="btn btn-ghost" onclick="clearLogs()">Clear</button>
+          </div>
+        </div>
+
+        <div class="textarea-wrapper">
+          <textarea id="logInput" placeholder="Paste 10,000 raw log lines here, or click one of the 1-Click Presets above to demo instantly..."></textarea>
+          <div class="drag-overlay" id="dragOverlay">Drop log file here</div>
+        </div>
+
+        <div class="ingestion-actions">
+          <div class="features-hint">
+            <span>🛡️ Zero Hand-Written Regex</span>
+            <span>⚡ Sub-Second Ingestion</span>
+            <span>🎯 Patient Zero Isolation</span>
+            <span>🌐 Blast Radius Mapping</span>
+          </div>
+          <button class="btn btn-primary btn-large" id="btnAnalyze" onclick="analyzeLogs()">
+            <span class="btn-icon">⚡</span> Analyze Outage & Triage
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Telemetry & Metrics Stats Ribbon (Shown after triage) -->
+    <section class="telemetry-section" id="telemetrySection" style="display: none;">
+      <div class="metric-card">
+        <span class="metric-label">RAW LOGS INGESTED</span>
+        <div class="metric-value" id="valTotalLines">10,000</div>
+        <span class="metric-sub" id="valErrorLines">1,489 errors filtered</span>
+      </div>
+      <div class="metric-card highlight-green">
+        <span class="metric-label">NOISE REDUCTION</span>
+        <div class="metric-value text-green" id="valNoiseReduction">99.92%</div>
+        <span class="metric-sub">10k lines ➔ handful of incidents</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">TRIAGE LATENCY</span>
+        <div class="metric-value text-cyan" id="valTriageSpeed">0.18s</div>
+        <span class="metric-sub">Fastest MTTD on-call</span>
+      </div>
+      <div class="metric-card highlight-red">
+        <span class="metric-label">OUTAGE SEVERITY</span>
+        <div class="metric-value text-red" id="valSeverityStatus">P0 CRITICAL</div>
+        <span class="metric-sub" id="valServicesCount">5 services infected</span>
+      </div>
+    </section>
+
+    <!-- Executive Outage War Room Card -->
+    <section class="war-room-section" id="warRoomSection" style="display: none;">
+      <div class="war-room-card">
+        <div class="war-room-banner">
+          <div class="banner-badge">🚨 ROOT CAUSE IDENTIFIED</div>
+          <h2 class="war-room-title" id="outageTitle">Database Connection Pool Starvation</h2>
+          <div class="war-room-meta">
+            <span>📅 Outage Started: <strong id="outageStartTime">2026-10-10 03:02:11 UTC</strong></span>
+            <span>🎯 Blast Radius: <strong id="outageServicesList">postgres-cluster, order-service, payment-gateway, api-gateway</strong></span>
+          </div>
+        </div>
+
+        <div class="war-room-grid">
+          <!-- Patient Zero Column -->
+          <div class="grid-col patient-zero-box">
+            <div class="col-title">
+              <span>🎯 Patient Zero (Earliest Anomalous Log Line)</span>
+              <span class="badge red" id="patientZeroLineNo">Line #2001</span>
+            </div>
+            <div class="code-terminal" id="patientZeroRaw">
+              2026-10-10T03:02:11.427Z [postgres-cluster] FATAL remaining connection slots are reserved for non-replication superuser connections (max_connections=100) pid=4921
+            </div>
+            <div class="diagnosis-narrative" id="diagnosisNarrative">
+              Spike in concurrent traffic or long-running transaction held all DB connection slots. Downstream APIs cannot acquire database handles, backing up checkout request queues.
+            </div>
+          </div>
+
+          <!-- Suggested Runbook & Remediation -->
+          <div class="grid-col remediation-box">
+            <div class="col-title">
+              <span>🛠️ Immediate Runbook & Remediation</span>
+              <button class="btn btn-xs btn-copy" onclick="copyCommand()">📋 Copy Command</button>
+            </div>
+            <div class="code-terminal command-terminal" id="remediationCommand">
+              kubectl scale deployment/db-pool-proxy --replicas=3
+            </div>
+            <div class="runbook-steps" id="runbookSteps">
+              1. Bump `max_connections` or connection pool size.<br>
+              2. Terminate idle/stuck transactions.<br>
+              3. Scale PgBouncer pooler replicas.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Cascade Waterfall Timeline -->
+    <section class="cascade-section" id="cascadeSection" style="display: none;">
+      <div class="section-header">
+        <h3>🌊 Chronological Blast Radius Cascade</h3>
+        <span class="subtitle">How the root trigger propagated across service boundaries</span>
+      </div>
+      <div class="cascade-timeline" id="cascadeTimeline">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- Ranked Actionable Incidents Grid -->
+    <section class="incidents-section" id="incidentsSection" style="display: none;">
+      <div class="section-header">
+        <h3>📋 Actionable Incidents Ranked by Impact</h3>
+        <span class="subtitle">10,000 lines reduced to distinct actionable clusters</span>
+      </div>
+      <div class="incidents-list" id="incidentsList">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+  </main>
+
+  <!-- Slack Export Modal -->
+  <div class="modal-backdrop" id="slackModal" style="display: none;" onclick="closeSlackModal(event)">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3>📋 PagerDuty / Slack Incident Post</h3>
+        <button class="btn-close" onclick="closeSlackModal()">&times;</button>
+      </div>
+      <textarea id="slackTextarea" readonly></textarea>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeSlackModal()">Close</button>
+        <button class="btn btn-primary" onclick="copySlackText()">Copy to Clipboard</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">Notification</div>
+
+  <script src="app.js"></script>
+</body>
+</html>
