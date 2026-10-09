@@ -75,6 +75,7 @@ body.dark-theme::before { content: none; }
   background: var(--ui-panel);
   box-shadow: none;
   isolation: isolate;
+  margin-bottom: 20px;
 }
 .hero-shell::before, .hero-shell::after { content: none; }
 .hero-kicker { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; color: var(--ui-accent); font-size: .66rem; font-weight: 650; text-transform: uppercase; letter-spacing: .09em; }
@@ -87,13 +88,13 @@ body.dark-theme::before { content: none; }
 .hero-status::before { content: ""; width: 6px; height: 6px; background: var(--ui-green); border-radius: 50%; }
 .hero-note { color: var(--ui-dim); font-size: .7rem; }
 .wordmark-stage { position: relative; min-width: 0; min-height: 150px; display: flex; align-items: center; justify-content: center; }
-#wordmarkCanvas { display: block; width: 100%; height: 165px; touch-action: pan-y; cursor: default; outline: none; }
+#wordmarkCanvas { display: block; width: 100%; height: 165px; touch-action: pan-y; cursor: crosshair; outline: none; }
 #wordmarkCanvas:focus-visible { outline: 1px solid #7c786d; outline-offset: 4px; border-radius: 4px; }
 .wordmark-caption { position: absolute; left: 2px; right: 2px; bottom: -5px; display: flex; justify-content: space-between; gap: 12px; color: var(--ui-dim); font-size: .6rem; letter-spacing: .045em; pointer-events: none; }
 .wordmark-caption span:last-child { text-align: right; }
 
 /* Main work areas */
-.ingestion-card, .metric-card, .war-room-card, .timeline-card, .incident-item {
+.ingestion-card, .metric-card, .war-room-card, .timeline-card, .incident-item, .spike-section, .topology-section {
   border: 1px solid var(--ui-border);
   background: var(--ui-panel);
   border-radius: var(--ui-radius);
@@ -176,70 +177,15 @@ textarea#logInput::placeholder { color: #73796f; }
 .modal-box textarea { background: #131515; border: 1px solid var(--ui-border); border-radius: 6px; color: var(--ui-text); padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .toast { border: 1px solid #3b403b; border-radius: 7px; background: #202321; box-shadow: 0 8px 24px rgba(0,0,0,.2); color: var(--ui-text); }
 
-@media (min-width: 1450px) {
-  .main-container { margin-top: 22px; }
-  .hero-shell { min-height: 235px; }
-}
-@media (max-width: 1160px) {
-  .app-header { flex-wrap: wrap; }
-  .presets-toolbar { order: 3; width: 100%; justify-content: flex-start; overflow-x: auto; }
-  .hero-shell { grid-template-columns: minmax(230px, .9fr) minmax(0, 1.1fr); }
-  .features-hint { max-width: 560px; }
-}
-@media (max-width: 800px) {
-  .app-header { padding: 13px 16px; gap: 12px; }
-  .logo-subtitle { max-width: 210px; font-size: .61rem; }
-  .header-actions { margin-left: auto; }
-  .header-actions .btn { padding: 8px 10px; font-size: .69rem; }
-  .presets-toolbar { border-radius: 8px; }
-  .main-container { margin-top: 16px; gap: 16px; }
-  .hero-shell { grid-template-columns: 1fr; gap: 12px; padding: 24px 21px 20px; }
-  .hero-title { max-width: 600px; }
-  .hero-description { max-width: 620px; }
-  .wordmark-stage { min-height: 112px; }
-  #wordmarkCanvas { height: 128px; }
-  .wordmark-caption { bottom: -2px; font-size: .56rem; }
-  .telemetry-section { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .card-header { align-items: flex-start; flex-wrap: wrap; }
-  .header-right { flex-wrap: wrap; }
+@media (max-width: 1024px) {
+  .hero-shell { grid-template-columns: 1fr; gap: 16px; }
   .war-room-grid { grid-template-columns: 1fr; }
 }
-@media (max-width: 540px) {
-  .logo-group { gap: 8px; }
-  .logo-title { font-size: 1.06rem; }
-  .logo-subtitle { max-width: 165px; }
-  .header-actions .live-clock { display: none; }
-  .presets-toolbar { gap: 2px; }
-  .preset-label { display: none; }
-  .preset-btn { font-size: .66rem; padding: 7px 8px; }
-  .preset-btn .badge { font-size: .55rem; }
-  .main-container { padding: 0 12px; }
-  .hero-shell { padding: 21px 16px 17px; border-radius: 8px; }
-  .hero-title { font-size: 1.8rem; }
-  .hero-description { font-size: .79rem; }
-  .wordmark-stage { margin: 0 -3px; }
-  #wordmarkCanvas { height: 102px; }
-  .wordmark-caption { font-size: .48rem; letter-spacing: .02em; }
-  .card-header { padding: 12px; }
-  .card-title { font-size: .7rem; }
-  .header-right { width: 100%; }
-  .textarea-wrapper { height: 215px; }
-  textarea#logInput { padding: 13px; font-size: .7rem; }
-  .ingestion-actions { align-items: stretch; flex-direction: column; padding: 13px; }
-  .features-hint { gap: 7px 10px; font-size: .62rem; }
-  .btn-large { width: 100%; }
-  .telemetry-section { gap: 8px; }
-  .metric-card { padding: 13px; }
-  .metric-value { font-size: 1.35rem; }
-  .metric-label { font-size: .56rem; }
-  .metric-sub { font-size: .62rem; }
-  .war-room-banner { padding: 17px; }
-  .war-room-grid { padding: 11px; }
-  .incident-item { padding: 13px; }
-  .incident-header, .incident-details { flex-direction: column; align-items: flex-start; }
-  .incident-title-row { flex-wrap: wrap; gap: 6px; }
-  .timeline-card { align-items: flex-start; gap: 9px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+
+@media (max-width: 768px) {
+  .app-header { flex-wrap: wrap; gap: 12px; }
+  .presets-toolbar { width: 100%; order: 3; overflow-x: auto; }
+  .hero-shell { padding: 18px; }
+  .telemetry-section { grid-template-columns: 1fr 1fr; }
+  .ingestion-actions { flex-direction: column; align-items: stretch; gap: 12px; }
 }
