@@ -82,16 +82,21 @@ Actionable Remediation Commands: Recommends concrete operational fix commands (e
 
 Resilient Dual-Mode Architecture: Powered by a serverless Python backend with an automatic in-browser client-side triage fallback, ensuring the UI works offline and under network constraints.
 
-##Trade-offs I Made
+##Trade-offs I Made:
+
 Deterministic Algorithmic Clustering vs. Large Language Models (LLMs):
+
 Trade-off: Opted for a Drain-inspired heuristic parser over sending logs to external LLM APIs (OpenAI/Anthropic).
 Rationale: LLMs querying 10,000 log lines take 10–30+ seconds, introduce token limits, incur API costs, and risk hallucinations. Algorithmic clustering finishes in 0.18 seconds locally with 100% deterministic accuracy.
+
 Heuristic Cascade Inference vs. Requiring Distributed Tracing (OpenTelemetry):
 Trade-off: Reconstructed the service cascade and blast radius using chronological event correlation instead of requiring distributed tracing IDs (like Jaeger/Zipkin spans).
 Rationale: In real-world outages, distributed tracing is often missing, misconfigured, or dropped during high load. Relying solely on raw log lines ensures the tool works out-of-the-box on any plain text dump.
+
 10-Second Discrete Time Bucketing vs. Microsecond Sliding Windows:
 Trade-off: Used 10-second discrete buckets for error histogramming rather than microsecond-level continuous binning.
 Rationale: At 3 a.m., an on-call engineer needs immediate, human-readable temporal context. 10-second intervals balance anomaly detection precision with fast visual clarity.
+
 Optimized Variable Masking vs. Full AST Grammar Parsing:
 Trade-off: Used optimized single-pass variable replacement rather than building a heavy language AST compiler.
 Rationale: Provides sub-millisecond per-line parsing speed across heterogeneous log formats (Syslog, Spring Boot, JSON, Kubernetes) while maintaining sub-200ms total triage time.
