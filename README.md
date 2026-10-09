@@ -82,7 +82,7 @@ Actionable Remediation Commands: Recommends concrete operational fix commands (e
 
 Resilient Dual-Mode Architecture: Powered by a serverless Python backend with an automatic in-browser client-side triage fallback, ensuring the UI works offline and under network constraints.
 
-##Trade-offs I Made:
+## Trade-offs I Made:
 
 Deterministic Algorithmic Clustering vs. Large Language Models (LLMs):
 
