@@ -38,7 +38,7 @@
 
 ---
 
-## 📡 REST API Reference
+## REST API Reference
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
@@ -57,7 +57,7 @@
 
 ---
 
-## 🏃 Quick Start
+## Quick Start
 
 ### 1. Run the v2 Server
 ```bash
