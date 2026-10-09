@@ -98,6 +98,37 @@ def generate_scenario_2_k8s_oom(total_lines=10000) -> str:
     return "\n".join(lines)
 
 
+def generate_scenario_3_redis_thundering_herd(total_lines=10000):
+    lines = []
+    base_time = datetime.now() - timedelta(hours=2)
+    
+    for i in range(1500):
+        base_time += timedelta(milliseconds=random.randint(10, 50))
+        lines.append(f"{base_time.strftime('%Y-%m-%d %H:%M:%S')} [cache-proxy] INFO Cache hit for key product:{random.randint(100, 999)}")
+        
+    base_time += timedelta(milliseconds=random.randint(10, 50))
+    lines.append(f"{base_time.strftime('%Y-%m-%d %H:%M:%S')} [redis-cluster] PANIC Master failover timed out. Sentinel could not promote replica. Cluster state: FAIL")
+    
+    error_templates = [
+        "[cache-proxy] ERROR Connection refused to redis-cluster:6379, falling back to DB",
+        "[product-service] WARN Cache miss, fetching from db-primary",
+        "[product-service] ERROR HikariPool-1 - Connection is not available, request timed out after 30000ms",
+        "[search-service] ERROR Timeout fetching product metadata, search degraded",
+        "[api-gateway] ERROR 504 Gateway Timeout while routing to product-service for path /api/v1/products/{pid}"
+    ]
+    
+    for i in range(total_lines - 1501):
+        base_time += timedelta(milliseconds=random.randint(5, 30))
+        if random.random() < 0.3:
+            lines.append(f"{base_time.strftime('%Y-%m-%d %H:%M:%S')} [kubelet] INFO Node health check OK for node-pool-1")
+        else:
+            tmpl = random.choice(error_templates)
+            formatted = tmpl.format(pid=random.randint(1000, 9999))
+            lines.append(f"{base_time.strftime('%Y-%m-%d %H:%M:%S')} {formatted}")
+            
+    return "\n".join(lines)
+
+
 if __name__ == '__main__':
     import os
     os.makedirs('datasets', exist_ok=True)
@@ -111,5 +142,10 @@ if __name__ == '__main__':
     s2 = generate_scenario_2_k8s_oom(10000)
     with open('datasets/k8s_oom_cascade_10k.log', 'w') as f:
         f.write(s2)
+
+    print("Generating Scenario 3: 10,000 log lines (Redis Thundering Herd)...")
+    s3 = generate_scenario_3_redis_thundering_herd(10000)
+    with open('datasets/redis_thundering_herd_10k.log', 'w') as f:
+        f.write(s3)
 
     print("Datasets successfully created in ./datasets/")

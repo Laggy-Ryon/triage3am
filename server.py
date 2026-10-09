@@ -8,7 +8,7 @@ import json
 import time
 import urllib.parse
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-from triage_engine import TriageEngine
+from triage_engine import TriageEngine, export_postmortem_markdown
 
 PORT = 8000
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -30,7 +30,7 @@ class TriageRequestHandler(SimpleHTTPRequestHandler):
             preset_name = query.get('name', [''])[0]
             self._handle_load_preset(preset_name)
         elif path == '/api/health':
-            self._send_json({'status': 'ok', 'server': 'Triage3AM v1.0'})
+            self._send_json({'status': 'ok', 'server': 'Triage3AM v2.0'})
         else:
             # Fallback to serving static files
             super().do_GET()
@@ -69,6 +69,15 @@ class TriageRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json({'markdown': slack_msg})
             except Exception as e:
                 self._send_json({'error': str(e)}, status=500)
+        elif path == '/api/export-postmortem':
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            try:
+                data = json.loads(post_data)
+                md = export_postmortem_markdown(data)
+                self._send_json({'markdown': md})
+            except Exception as e:
+                self._send_json({'error': str(e)}, status=500)
         else:
             self.send_error(404, "Endpoint not found")
 
@@ -89,6 +98,14 @@ class TriageRequestHandler(SimpleHTTPRequestHandler):
                 'services': ['auth-service', 'kubelet', 'user-service', 'api-gateway'],
                 'lines': 10000,
                 'type': 'Memory Exhaustion'
+            },
+            {
+                'id': 'redis_thundering_herd_10k.log',
+                'title': 'Scenario 3: Redis Thundering Herd (10,000 Lines)',
+                'description': 'Redis primary failover timeout causes a cache miss thundering herd that exhausts DB connections and leads to 504 Gateway Timeouts.',
+                'services': ['redis-cluster', 'cache-proxy', 'product-service', 'search-service', 'api-gateway'],
+                'lines': 10000,
+                'type': 'Thundering Herd'
             }
         ]
         self._send_json({'presets': presets})

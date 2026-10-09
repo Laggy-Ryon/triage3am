@@ -211,6 +211,7 @@ class TriageEngine:
         self.total_lines = len(lines)
         self.clusters = []
         self.error_lines = 0
+        self.all_logs: List[LogLine] = []
 
         cluster_groups: Dict[Tuple[str, int], List[DrainCluster]] = defaultdict(list)
 
@@ -219,6 +220,7 @@ class TriageEngine:
                 continue
 
             log = LogLine(raw, line_no)
+            self.all_logs.append(log)
             is_error_grade = log.severity in ['PANIC', 'FATAL', 'CRITICAL', 'SEVERE', 'ERROR', 'WARN']
             if is_error_grade:
                 self.error_lines += 1
@@ -365,6 +367,8 @@ class TriageEngine:
         if global_trigger_cluster and global_trigger_cluster.first_seen and isinstance(global_trigger_cluster.first_seen, datetime):
             outage_start_str = global_trigger_cluster.first_seen.strftime('%Y-%m-%d %H:%M:%S')
 
+        service_graph = self._build_service_graph(formatted_incidents, all_services)
+
         return {
             'summary': {
                 'total_lines_ingested': self.total_lines,
@@ -379,7 +383,57 @@ class TriageEngine:
                 'root_cause_summary': formatted_incidents[0]['diagnosis']['root_cause'] if formatted_incidents else "Multiple microservice faults"
             },
             'incidents': formatted_incidents,
-            'cascade_chain': self._build_cascade_chain(formatted_incidents)
+            'cascade_chain': self._build_cascade_chain(formatted_incidents),
+            'service_graph': service_graph,
+            'error_histogram': self._build_error_histogram()
+        }
+
+    def _build_error_histogram(self) -> Dict[str, Any]:
+        """Builds a temporal histogram of errors by 10-second windows and detects spikes."""
+        bucket_counts = defaultdict(lambda: {'total': 0, 'errors': 0, 'info': 0})
+        
+        for log in self.all_logs:
+            if not log.timestamp:
+                continue
+            bucket_ts = log.timestamp.replace(second=(log.timestamp.second // 10) * 10, microsecond=0)
+            bucket_label = bucket_ts.strftime('%H:%M:%S')
+            
+            bucket_counts[bucket_label]['total'] += 1
+            is_error = log.severity in ['PANIC', 'FATAL', 'CRITICAL', 'SEVERE', 'ERROR', 'WARN']
+            if is_error:
+                bucket_counts[bucket_label]['errors'] += 1
+            else:
+                bucket_counts[bucket_label]['info'] += 1
+                
+        sorted_buckets = sorted(bucket_counts.items(), key=lambda x: x[0])
+        
+        # Baseline error rate measured during early traffic window (normal operation phase)
+        warmup_count = max(1, len(sorted_buckets) // 4)
+        warmup_slice = sorted_buckets[:warmup_count]
+        baseline_rate = (sum(b['errors'] for _, b in warmup_slice) / warmup_count)
+        
+        spike_detected_at = None
+        peak_error_rate = 0
+        buckets_list = []
+        
+        for label, counts in sorted_buckets:
+            buckets_list.append({
+                'time_label': label,
+                'total': counts['total'],
+                'errors': counts['errors'],
+                'info': counts['info']
+            })
+            if counts['errors'] > peak_error_rate:
+                peak_error_rate = counts['errors']
+                
+            if spike_detected_at is None and counts['errors'] > max(5, baseline_rate * 2):
+                spike_detected_at = label
+                    
+        return {
+            'buckets': buckets_list,
+            'spike_detected_at': spike_detected_at,
+            'baseline_error_rate': round(baseline_rate, 2),
+            'peak_error_rate': peak_error_rate
         }
 
     def _diagnose_incident(self, cluster: DrainCluster, is_cascade_root: bool) -> Dict[str, Any]:
@@ -474,3 +528,87 @@ class TriageEngine:
                 'is_trigger': inc.get('is_cascade_trigger', False)
             })
         return chain
+
+    def _build_service_graph(self, incidents: List[Dict[str, Any]], all_services: set) -> Dict[str, Any]:
+        """Constructs a directed blast-radius topology network with infected nodes and cascade edges."""
+        nodes = []
+        edges = []
+        root_service = incidents[0]['primary_service'] if incidents else "system"
+
+        for svc in sorted(list(all_services)):
+            is_root = (svc == root_service)
+            error_count = sum(inc['line_count'] for inc in incidents if svc in inc['services_affected'])
+            status = 'CRITICAL' if is_root else ('DEGRADED' if error_count > 100 else 'WARNING')
+
+            nodes.append({
+                'id': svc,
+                'label': svc,
+                'status': status,
+                'is_root': is_root,
+                'error_count': error_count
+            })
+
+        # Connect cascade chain into directed edges
+        for i in range(len(incidents) - 1):
+            src = incidents[i]['primary_service']
+            dst = incidents[i + 1]['primary_service']
+            if src != dst:
+                edges.append({
+                    'from': src,
+                    'to': dst,
+                    'label': 'cascaded_to',
+                    'severity': incidents[i]['priority']
+                })
+
+        return {
+            'nodes': nodes,
+            'edges': edges,
+            'root_node': root_service
+        }
+
+def export_postmortem_markdown(report: Dict[str, Any]) -> str:
+    """Generates an enterprise-standard Post-Incident Review (PIR) document."""
+    s = report.get('summary', {})
+    incidents = report.get('incidents', [])
+    p0 = incidents[0] if incidents else {}
+    diag = p0.get('diagnosis', {})
+    pz = p0.get('patient_zero', {})
+
+    return f"""# 📄 SRE Post-Incident Review (PIR): SEV-1 Incident
+**Incident Title:** {s.get('root_cause_summary', 'System Outage')}  
+**Date & Time:** {s.get('outage_started_at', '2026-10-10 03:00:00 UTC')}  
+**Triage System:** Triage3AM v2.0 Autonomous AIOps  
+**Triage Latency:** {s.get('time_to_triage_seconds', 0.2)} seconds (Automated)  
+**Noise Reduction:** {s.get('noise_reduction_percentage', 99.9)}% ({s.get('total_lines_ingested', 10000)} lines ➔ {s.get('actionable_incidents', 3)} root incidents)  
+
+---
+
+## 1. Executive Summary
+At {s.get('outage_started_at', '03:00 UTC')}, a Sev-1 outage affected **{len(s.get('services_impacted', []))} microservices** ({', '.join(s.get('services_impacted', [])[:5])}).
+The incident was automatically isolated by Triage3AM's rule-free template clustering engine within {s.get('time_to_triage_seconds', 0.2)}s without manual regex rules.
+
+## 2. Root Cause & Patient Zero
+- **Root Cause:** {diag.get('root_cause', 'Dependency Failure')}
+- **Trigger Hypothesis:** {diag.get('trigger', 'Underlying bottleneck')}
+- **Patient Zero Log Line (Line #{pz.get('line_no', 'N/A')}):**
+```
+{pz.get('raw', 'N/A')}
+```
+
+## 3. Impact & Blast Radius
+- **Total Log Lines Ingested:** {s.get('total_lines_ingested', 0):,}
+- **Total Error Burst:** {s.get('total_error_lines', 0):,} error lines
+- **Services Compromised:** `{', '.join(s.get('services_impacted', []))}`
+- **Narrative:** {diag.get('impact_narrative', 'N/A')}
+
+## 4. Remediation & Recovery Runbook
+Executed fix command:
+```bash
+{diag.get('command', 'kubectl get pods -A')}
+```
+**Action Items:**
+{diag.get('recommended_fix', 'Inspect deployments and scale resources.')}
+
+---
+*Report auto-generated by Triage3AM v2.0 at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}*
+"""
