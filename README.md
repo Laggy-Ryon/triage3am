@@ -1,17 +1,8 @@
-# 🚨 Triage3AM v2.0 — Finding the Signal in 10,000 Log Lines at 3 A.M.
+# 🚨 Triage3AM — Finding the Signal in 10,000 Log Lines at 3 A.M.
 
 > **Protothon <> BST October 2026 Submission**  
 > **Problem Statement #8:** *Finding the signal in 10,000 log lines at 3 a.m.*  
 > **Benchmark Metric Achieved:** 10,000 raw lines $\rightarrow$ 3 actionable incident cards in **0.18 seconds** (**99.92% noise reduction**).
-
----
-
-## 🚀 What's New in v2.0 (Hackathon Major Update)
-
-- 📈 **Temporal Error Rate Spike Detection:** Sliding 10-second window histogram pinpoints the exact second anomalies began cascading before human on-call was paged.
-- 🌐 **Service Blast Radius Topology:** Directed visual dependency graph highlighting `CRITICAL` root nodes and downstream `DEGRADED` services with error volume flows.
-- ⚡ **3 Enterprise Outage Scenarios:** Pre-loaded 10,000-line benchmarks covering Database Pool Starvation, Kubernetes OOM CrashLoops, and Redis Thundering Herd Failovers.
-- 📄 **Automated Post-Incident Review (PIR):** Generates production-grade postmortem documentation in Google SRE Markdown format with 1 click.
 
 ---
 
@@ -29,7 +20,7 @@ At 3:00 a.m., an on-call Site Reliability Engineer (SRE) is paged by PagerDuty. 
 
 ---
 
-## 💡 The Solution: Triage3AM v2.0
+## 💡 The Solution: Triage3AM
 
 **Triage3AM** is an autonomous, rule-free observability and incident triage engine designed to turn a 10,000-line disaster log into a crisp, actionable incident briefing inside **1 minute**.
 
@@ -41,10 +32,9 @@ At 3:00 a.m., an on-call Site Reliability Engineer (SRE) is paged by PagerDuty. 
    - Detects the earliest anomalous event in the time continuum before downstream cascading retries flood the system.
 3. **Cross-Service Blast Radius & Impact Scoring:**
    - Ranks incidents into `P0 - Critical Outage`, `P1 - High Impact`, and `P2 - Degradation` using a multi-factor impact score (frequency burst, affected microservice count, stack trace presence, and cascade seniority).
-4. **Temporal Spike & Topology Mapping (v2.0):**
-   - Quantifies baseline vs peak error rates and charts microservice propagation vectors.
-5. **Instant Actionable Runbooks & Remediation:**
-   - Pinpoints exact root cause and generates ready-to-run terminal commands (`kubectl rollout undo`, `ALTER SYSTEM SET max_connections=300`) and copyable PagerDuty/Slack Sev-1 broadcasts.
+4. **Instant Actionable Runbooks & Remediation:**
+   - Pinpoints exact root cause (e.g. *Database Connection Pool Starvation*, *Container JVM OOM & CrashLoopBackOff*).
+   - Generates ready-to-run terminal commands (`kubectl rollout undo`, `ALTER SYSTEM SET max_connections=300`) and copyable PagerDuty/Slack Sev-1 broadcasts.
 
 ---
 
