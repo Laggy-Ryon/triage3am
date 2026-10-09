@@ -9,8 +9,13 @@ import math
 import json
 import time
 from collections import defaultdict, Counter
+ triagev2_aarman
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Tuple, Optional, Generator, Union, Iterable
+=======
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Tuple, Optional
+ main
 
 # Universal dynamic masking patterns
 IP_REGEX = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b')
@@ -23,10 +28,15 @@ TIMESTAMP_REGEX = re.compile(
     r'|\d{2}:\d{2}:\d{2}(?:\.\d+)?)\b'
 )
 NUMBER_REGEX = re.compile(r'\b\d+(?:\.\d+)?\b')
+HTTP_STATUS_REGEX = re.compile(
+    r'\b(HTTP(?:/\d(?:\.\d)?)?\s+|status(?:\s*(?:code)?\s*[=:]?\s*)|response\s+)([1-5]\d{2})\b',
+    re.IGNORECASE
+)
 URL_REGEX = re.compile(r'https?://[^\s]+|/[a-zA-Z0-9_\-\./]+(?:\?[a-zA-Z0-9_\-=&]+)?')
 FILE_PATH_REGEX = re.compile(r'(/[\w\-.]+)+:\d+')
 SQL_REGEX = re.compile(r'\b(SELECT|INSERT INTO|UPDATE|DELETE FROM)\b.*?(?=;|\n|$)', re.IGNORECASE)
 SERVICE_BRACKET_REGEX = re.compile(r'\[([a-zA-Z0-9_\-]+(?:-service|-api|-worker|-db|-app|-gateway|svc|pod|cluster)?)\]')
+_DIGIT_WORDS = ('ZERO', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE')
 
 SEVERITY_WEIGHTS = {
     'PANIC': 100,
@@ -119,6 +129,10 @@ class LogLine:
         try:
             iso_str = cleaned.replace('Z', '+00:00')
             self.timestamp = datetime.fromisoformat(iso_str)
+            if self.timestamp.tzinfo is None:
+                self.timestamp = self.timestamp.replace(tzinfo=timezone.utc)
+            else:
+                self.timestamp = self.timestamp.astimezone(timezone.utc)
             return
         except Exception:
             pass
@@ -137,6 +151,7 @@ class LogLine:
             try:
                 base = cleaned.split('+')[0].rstrip('Z')
                 self.timestamp = datetime.strptime(base, fmt)
+                self.timestamp = self.timestamp.replace(tzinfo=timezone.utc)
                 return
             except ValueError:
                 continue
@@ -153,9 +168,21 @@ class LogLine:
         if self.timestamp_str:
             clean_text = clean_text.replace(self.timestamp_str, '')
 
+ triagev2_aarman
         # Universal masking passes
         clean_text = SQL_REGEX.sub('<SQL_QUERY>', clean_text)
         clean_text = FILE_PATH_REGEX.sub('<PATH>', clean_text)
+=======
+        # Preserve response codes as meaning-bearing tokens before masking other numbers.
+        clean_text = HTTP_STATUS_REGEX.sub(
+            lambda match: match.group(1) + '<HTTP_STATUS_' + ''.join(
+                _DIGIT_WORDS[int(digit)] for digit in match.group(2)
+            ) + '>',
+            clean_text
+        )
+        
+        # Replace variable tokens with generic markers
+ main
         clean_text = UUID_REGEX.sub('<UUID>', clean_text)
         clean_text = IP_REGEX.sub('<IP>', clean_text)
         clean_text = HEX_REGEX.sub('<HEX>', clean_text)
@@ -200,6 +227,8 @@ class DrainCluster:
         for i in range(min_len):
             t1 = self.template_tokens[i]
             t2 = tokens[i]
+            if (t1.startswith('<HTTP_STATUS_') or t2.startswith('<HTTP_STATUS_')) and t1 != t2:
+                return 0.0
             if t1 == t2:
                 matches += 1.0
             elif t1 == '<*>' or t2 == '<*>':
@@ -340,11 +369,9 @@ class TriageEngine:
         for c in incident_clusters:
             if c.patient_zero and c.patient_zero.timestamp:
                 all_patient_zeros.append((c.patient_zero.timestamp, c))
-            elif c.patient_zero:
-                all_patient_zeros.append((datetime.min, c))
 
         all_patient_zeros.sort(key=lambda x: x[0])
-        global_trigger_cluster = all_patient_zeros[0][1] if all_patient_zeros else (incident_clusters[0] if incident_clusters else None)
+        global_trigger_cluster = all_patient_zeros[0][1] if all_patient_zeros else None
 
         scored_incidents = []
         all_services = set()
@@ -362,6 +389,7 @@ class TriageEngine:
 
             sev_weight = SEVERITY_WEIGHTS.get(max_sev, 10)
             is_global_root = (c == global_trigger_cluster)
+ triagev2_aarman
 
             cascade_influence = 35 if is_global_root else (15 if c.patient_zero and c.patient_zero.line_no < 2500 else 0)
             stacktrace_boost = 15 if c.has_stacktrace else 0
@@ -375,6 +403,20 @@ class TriageEngine:
             )
 
             if impact_score >= 60 or max_sev in ['FATAL', 'PANIC', 'CRITICAL'] or is_global_root:
+
+            
+            score_breakdown = {
+                'severity': round(sev_weight * 0.35, 1),
+                'frequency': round(min(count * 0.05, 30), 1),
+                'service_breadth': round(min(num_services, 5) * 6, 1),
+                'earliest_incident_bonus': 35 if is_global_root else 0,
+                'stacktrace_evidence': 15 if c.has_stacktrace else 0,
+            }
+            impact_score = round(sum(score_breakdown.values()), 1)
+
+            # Classify Priority: P0 (Critical Outage), P1 (High Impact), P2 (Degradation)
+            if impact_score >= 60 or max_sev in ['FATAL', 'PANIC', 'CRITICAL']:
+main
                 priority = 'P0'
                 priority_label = 'CRITICAL OUTAGE'
             elif impact_score >= 40 or max_sev == 'ERROR':
@@ -387,6 +429,7 @@ class TriageEngine:
             scored_incidents.append({
                 'cluster': c,
                 'impact_score': round(impact_score, 1),
+                'impact_breakdown': score_breakdown,
                 'priority': priority,
                 'priority_label': priority_label,
                 'max_sev': max_sev,
@@ -400,6 +443,14 @@ class TriageEngine:
             c: DrainCluster = item['cluster']
             is_cascade_root = item['is_global_root']
             diagnosis = self._diagnose_incident(c, is_cascade_root)
+            diagnosis['confidence'] = 'heuristic'
+            diagnosis['causality_confirmed'] = False
+            diagnosis['evidence'] = {
+                'basis': 'The candidate label comes from message text patterns. The examples below support the match but do not prove causation.',
+                'supporting_log_lines': [line.raw for line in c.log_lines[:3]],
+                'observed_services': list(c.services.keys()),
+                'first_seen': c.first_seen.isoformat() if isinstance(c.first_seen, datetime) else None,
+            }
 
             formatted_incidents.append({
                 'rank': rank,
@@ -407,18 +458,19 @@ class TriageEngine:
                 'priority': item['priority'],
                 'priority_label': item['priority_label'],
                 'impact_score': item['impact_score'],
+                'impact_breakdown': item['impact_breakdown'],
                 'template': c.get_template_str(),
                 'line_count': len(c.log_lines),
                 'percentage_of_total': round((len(c.log_lines) / max(self.total_lines, 1)) * 100, 2),
-                'first_seen': c.first_seen.strftime('%Y-%m-%d %H:%M:%S') if isinstance(c.first_seen, datetime) else (str(c.first_seen) if c.first_seen else "Initial Phase"),
-                'last_seen': c.last_seen.strftime('%Y-%m-%d %H:%M:%S') if isinstance(c.last_seen, datetime) else (str(c.last_seen) if c.last_seen else "Ongoing"),
+                'first_seen': c.first_seen.isoformat() if isinstance(c.first_seen, datetime) else None,
+                'last_seen': c.last_seen.isoformat() if isinstance(c.last_seen, datetime) else None,
                 'services_affected': list(c.services.keys()),
                 'primary_service': c.services.most_common(1)[0][0] if c.services else "system",
                 'severities': dict(c.severities),
                 'patient_zero': {
                     'line_no': c.patient_zero.line_no,
                     'raw': c.patient_zero.raw,
-                    'timestamp': c.patient_zero.timestamp_str or (c.first_seen.strftime('%H:%M:%S') if isinstance(c.first_seen, datetime) else "03:02:11"),
+                    'timestamp': c.patient_zero.timestamp.isoformat() if c.patient_zero.timestamp else None,
                     'service': c.patient_zero.service,
                 },
                 'is_cascade_trigger': is_cascade_root,
@@ -429,9 +481,9 @@ class TriageEngine:
         incident_count = len(formatted_incidents)
         noise_reduction_pct = round(((self.total_lines - incident_count) / max(self.total_lines, 1)) * 100, 2)
 
-        outage_start_str = "03:02:11 UTC"
+        outage_start_str = None
         if global_trigger_cluster and global_trigger_cluster.first_seen and isinstance(global_trigger_cluster.first_seen, datetime):
-            outage_start_str = global_trigger_cluster.first_seen.strftime('%Y-%m-%d %H:%M:%S')
+            outage_start_str = global_trigger_cluster.first_seen.isoformat()
 
         timeline_data = [
             {'time': k, 'error': v.get('ERROR', 0), 'warn': v.get('WARN', 0), 'info': v.get('INFO', 0)}
@@ -447,7 +499,10 @@ class TriageEngine:
                 'noise_reduction_percentage': noise_reduction_pct,
                 'services_impacted': sorted(list(all_services)),
                 'total_services_impacted': len(all_services),
+ triagev2_aarman
                 'time_to_triage_seconds': 0.1,
+=======
+ main
                 'outage_started_at': outage_start_str,
                 'root_cause_summary': formatted_incidents[0]['diagnosis']['root_cause'] if formatted_incidents else "Multiple microservice faults"
             },

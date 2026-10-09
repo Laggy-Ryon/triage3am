@@ -1,5 +1,5 @@
 """
-Triage3AM Web Server (v2): High-concurrency threaded HTTP server with REST API,
+Triage3AM Web Server (v2.0): High-concurrency threaded HTTP server with REST API,
 streaming file ingestion, multipart upload support, dynamic dataset discovery,
 and multi-format incident export.
 """
@@ -15,7 +15,7 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from typing import Dict, Any, Optional
 
-from triage_engine import TriageEngine
+from triage_engine import TriageEngine, export_postmortem_markdown
 from file_handler import (
     SafePathManager,
     StreamingLogReader,
@@ -28,6 +28,9 @@ from file_handler import (
 
 PORT = 8000
 SERVER_START_TIME = time.time()
+HOST = os.environ.get('TRIAGE_HOST', '127.0.0.1')
+MAX_REQUEST_BYTES = int(os.environ.get('TRIAGE_MAX_REQUEST_BYTES', MAX_UPLOAD_SIZE))
+MAX_LOG_LINES = int(os.environ.get('TRIAGE_MAX_LOG_LINES', 100_000))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
 DATASETS_DIR = os.path.join(BASE_DIR, 'datasets')
@@ -44,6 +47,10 @@ class TriageRequestHandler(SimpleHTTPRequestHandler):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=STATIC_DIR, **kwargs)
+
+    def setup(self):
+        super().setup()
+        self.connection.settimeout(10)
 
     # -------------------------------------------------------------
     # GET Endpoints
@@ -68,7 +75,9 @@ class TriageRequestHandler(SimpleHTTPRequestHandler):
                     'multipart_upload',
                     'gzip_compression',
                     'dynamic_dataset_discovery',
-                    'temporal_cascade_graph'
+                    'temporal_cascade_graph',
+                    'error_rate_spike_histogram',
+                    'service_blast_radius_topology'
                 ]
             })
 
@@ -129,10 +138,12 @@ class TriageRequestHandler(SimpleHTTPRequestHandler):
         elif path in ('/api/analyze', '/api/v2/analyze'):
             self._handle_analyze_post(content_type, content_length)
 
-        # 3. Export Reports (/api/export-slack or /api/v2/export)
+        # 3. Export Reports (/api/export-slack, /api/export-postmortem, or /api/v2/export)
         elif path == '/api/export-slack':
             self._handle_export_slack_legacy(content_length)
-        elif path == '/api/v2/export':
+        elif path == '/api/export-postmortem':
+            self._handle_export_postmortem_legacy(content_length)
+        elif path in ('/api/export', '/api/v2/export'):
             self._handle_export_v2(content_length)
 
         # 4. Direct Report File Download (/api/export/download or /api/v2/export/download)
@@ -165,7 +176,6 @@ class TriageRequestHandler(SimpleHTTPRequestHandler):
             return
 
         try:
-            # Stream lines efficiently
             lines = []
             for _, line in StreamingLogReader.stream_lines(target_path, max_lines=limit, offset=offset):
                 lines.append(line)
@@ -194,7 +204,6 @@ class TriageRequestHandler(SimpleHTTPRequestHandler):
                 self._send_error("No files provided in multipart upload", status=400, code="NO_FILE")
                 return
 
-            # Grab first uploaded file
             file_info = next(iter(files.values()))
             raw_text = file_info.get('content', '')
             filename = file_info.get('filename', 'uploaded_file.log')
@@ -219,14 +228,12 @@ class TriageRequestHandler(SimpleHTTPRequestHandler):
         try:
             raw_body = self.rfile.read(content_length)
 
-            # Support gzip request decoding if client compressed payload
             if self.headers.get('Content-Encoding') == 'gzip':
                 raw_body = gzip.decompress(raw_body)
 
             post_data = raw_body.decode('utf-8', errors='replace')
             threshold = 0.55
 
-            # Handle JSON payload vs raw text payload
             if post_data.strip().startswith('{'):
                 try:
                     body = json.loads(post_data)
@@ -255,6 +262,16 @@ class TriageRequestHandler(SimpleHTTPRequestHandler):
             data = json.loads(post_data)
             slack_msg = IncidentReportExporter.to_slack_markdown(data)
             self._send_json({'markdown': slack_msg})
+        except Exception as e:
+            self._send_error(str(e), status=500)
+
+    def _handle_export_postmortem_legacy(self, content_length: int):
+        """v2 Post-Incident Review export endpoint."""
+        try:
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            data = json.loads(post_data)
+            pir_msg = IncidentReportExporter.to_incident_postmortem_markdown(data)
+            self._send_json({'markdown': pir_msg})
         except Exception as e:
             self._send_error(str(e), status=500)
 
@@ -318,7 +335,6 @@ class TriageRequestHandler(SimpleHTTPRequestHandler):
             self._set_cors_and_security_headers()
             self.end_headers()
 
-            # Stream file in 64KB chunks
             with open(target_path, 'rb') as f:
                 while True:
                     chunk = f.read(65536)
@@ -393,7 +409,6 @@ class TriageRequestHandler(SimpleHTTPRequestHandler):
         body = json.dumps(data).encode('utf-8')
         accept_encoding = self.headers.get('Accept-Encoding', '')
 
-        # Transparent gzip response compression for payloads > 1KB
         if len(body) > 1024 and 'gzip' in accept_encoding:
             body = gzip.compress(body)
             is_gzip = True
@@ -433,7 +448,6 @@ class TriageRequestHandler(SimpleHTTPRequestHandler):
         self.send_header('Content-Length', '0')
         self.end_headers()
 
-    # Legacy static method for backward compatibility in unit tests
     @staticmethod
     def _generate_slack_markdown(handler_instance, report: dict) -> str:
         return IncidentReportExporter.to_slack_markdown(report)
@@ -441,7 +455,7 @@ class TriageRequestHandler(SimpleHTTPRequestHandler):
 
 def run(port=PORT):
     server = ThreadedHTTPServer(('0.0.0.0', port), TriageRequestHandler)
-    print(f"🔥 Triage3AM v2.0 Server running at http://localhost:{port}")
+    print(f"🔥 Triage3AM v2.0 Server running at http://0.0.0.0:{port}")
     print(f"📁 Serving static files from {STATIC_DIR}")
     print(f"📦 Datasets directory: {DATASETS_DIR}")
     try:
