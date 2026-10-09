@@ -1,199 +1,1057 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Triage3AM | Finding the Signal in 10,000 Log Lines</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Triage3AM v2.0 - Autonomous Outage Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0c10;
+            --bg-secondary: #12151e;
+            --bg-card: #181c28;
+            --bg-card-hover: #1f2434;
+            --border-color: #272f44;
+            --border-glow: #38bdf8;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-p0: #ef4444;
+            --accent-p0-bg: rgba(239, 68, 68, 0.15);
+            --accent-p1: #f59e0b;
+            --accent-p1-bg: rgba(245, 158, 11, 0.15);
+            --accent-p2: #3b82f6;
+            --accent-p2-bg: rgba(59, 130, 246, 0.15);
+            --accent-cyan: #06b6d4;
+            --accent-green: #10b981;
+            --accent-purple: #8b5cf6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            min-height: 100vh;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        code, pre {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* Header */
+        header {
+            background: linear-gradient(180deg, rgba(18, 21, 30, 0.95) 0%, rgba(10, 12, 16, 0.8) 100%);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(12px);
+        }
+
+        .header-container {
+            max-width: 1500px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-group {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .logo-icon {
+            background: linear-gradient(135deg, #ef4444 0%, #f97316 100%);
+            color: white;
+            font-size: 1.25rem;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+        }
+
+        .logo-title {
+            font-size: 1.35rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            background: linear-gradient(90deg, #ffffff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .badge-v2 {
+            background: linear-gradient(135deg, #3b82f6, #06b6d4);
+            color: #fff;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.2rem 0.5rem;
+            border-radius: 20px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .header-meta {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .live-status {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.4; transform: scale(0.9); }
+            50% { opacity: 1; transform: scale(1.2); }
+            100% { opacity: 0.4; transform: scale(0.9); }
+        }
+
+        /* Main Layout */
+        main {
+            max-width: 1500px;
+            margin: 1.5rem auto;
+            padding: 0 1.5rem 3rem 1.5rem;
+        }
+
+        /* Ingestion Panel */
+        .ingestion-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        @media (max-width: 1024px) {
+            .ingestion-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            transition: border-color 0.2s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(56, 189, 248, 0.4);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .preset-select {
+            width: 100%;
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            padding: 0.75rem 1rem;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .preset-select:focus {
+            border-color: var(--border-glow);
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--border-color);
+            border-radius: 10px;
+            padding: 2rem 1rem;
+            text-align: center;
+            background-color: rgba(18, 21, 30, 0.5);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .drop-zone.dragover {
+            border-color: var(--border-glow);
+            background-color: rgba(6, 182, 212, 0.08);
+        }
+
+        .drop-icon {
+            font-size: 2.2rem;
+            color: var(--accent-cyan);
+            margin-bottom: 0.5rem;
+        }
+
+        .log-textarea {
+            width: 100%;
+            height: 180px;
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.8rem;
+            padding: 0.75rem;
+            resize: vertical;
+            outline: none;
+            line-height: 1.4;
+        }
+
+        .log-textarea:focus {
+            border-color: var(--border-glow);
+        }
+
+        .controls-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1rem;
+        }
+
+        .btn {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.65rem 1.25rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.15s ease;
+        }
+
+        .btn:hover {
+            background-color: var(--bg-card-hover);
+            border-color: var(--text-secondary);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            border: none;
+            color: white;
+            box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+            transform: translateY(-1px);
+        }
+
+        .btn-cyan {
+            background: linear-gradient(135deg, #06b6d4 0%, #0284c7 100%);
+            border: none;
+            color: white;
+            box-shadow: 0 4px 14px rgba(6, 182, 212, 0.3);
+        }
+
+        .btn-cyan:hover {
+            transform: translateY(-1px);
+        }
+
+        /* Results Overview Banner */
+        .results-section {
+            display: none;
+            margin-top: 1.5rem;
+        }
+
+        .sev-banner {
+            background: linear-gradient(90deg, rgba(239, 68, 68, 0.2) 0%, rgba(24, 28, 40, 0.95) 100%);
+            border-left: 5px solid var(--accent-p0);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border-top: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1.5rem;
+        }
+
+        .sev-badge {
+            display: inline-block;
+            font-size: 0.85rem;
+            font-weight: 800;
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .sev-P0 { background-color: var(--accent-p0); color: white; }
+        .sev-P1 { background-color: var(--accent-p1); color: black; }
+        .sev-P2 { background-color: var(--accent-p2); color: white; }
+
+        .banner-title {
+            font-size: 1.4rem;
+            font-weight: 800;
+            margin: 0.35rem 0;
+            color: #ffffff;
+        }
+
+        .banner-trigger {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.75rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        @media (max-width: 900px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .stat-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .stat-val {
+            font-size: 1.75rem;
+            font-weight: 800;
+            color: #ffffff;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 0.2rem;
+        }
+
+        /* Patient Zero Box */
+        .pz-box {
+            background-color: #0b0e14;
+            border: 1px solid #dc2626;
+            border-radius: 10px;
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+
+        .pz-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            font-size: 0.85rem;
+            color: #f87171;
+            font-weight: 700;
+        }
+
+        .pz-code {
+            color: #fca5a5;
+            font-size: 0.85rem;
+            word-break: break-all;
+            white-space: pre-wrap;
+        }
+
+        /* Runbook command card */
+        .cmd-box {
+            background-color: #090d16;
+            border: 1px solid #1e293b;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            color: #38bdf8;
+            margin-top: 0.5rem;
+        }
+
+        .copy-btn {
+            background: rgba(56, 189, 248, 0.15);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            color: #38bdf8;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+        }
+
+        .copy-btn:hover {
+            background: rgba(56, 189, 248, 0.3);
+        }
+
+        /* Cascade Chain Timeline */
+        .timeline-section {
+            margin-bottom: 2rem;
+        }
+
+        .cascade-hops {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .cascade-hop {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.85rem 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+        }
+
+        .hop-trigger {
+            border-left: 4px solid var(--accent-p0);
+            background-color: rgba(239, 68, 68, 0.08);
+        }
+
+        .hop-time {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            min-width: 100px;
+        }
+
+        .hop-service {
+            font-weight: 700;
+            color: #38bdf8;
+            min-width: 160px;
+        }
+
+        .hop-event {
+            flex: 1;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+
+        .hop-badge {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-weight: 700;
+        }
+
+        /* Incidents Table */
+        .table-responsive {
+            overflow-x: auto;
+            margin-top: 1rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            text-align: left;
+        }
+
+        th {
+            background-color: var(--bg-secondary);
+            color: var(--text-secondary);
+            padding: 0.75rem 1rem;
+            border-bottom: 2px solid var(--border-color);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+
+        td {
+            padding: 0.85rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+
+        tr:hover td {
+            background-color: var(--bg-card-hover);
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-content {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            width: 90%;
+            max-width: 800px;
+            padding: 1.5rem;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .modal-body {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .modal-pre {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            font-size: 0.8rem;
+            color: #e2e8f0;
+            white-space: pre-wrap;
+            max-height: 450px;
+            overflow-y: auto;
+        }
+    </style>
 </head>
-<body class="dark-theme">
-  <!-- Top Navigation Bar -->
-  <header class="app-header">
-    <div class="logo-group">
-      <div class="pulse-indicator">
-        <span class="pulse-dot"></span>
-        <span class="pulse-ring"></span>
-      </div>
-      <div>
-        <h1 class="logo-title">Triage<span>3AM</span></h1>
-        <p class="logo-subtitle">Protothon 2026 &bull; Observability & AIOps Outage Triage</p>
-      </div>
+<body>
+
+    <header>
+        <div class="header-container">
+            <div class="logo-group">
+                <div class="logo-icon">🔥</div>
+                <div>
+                    <span class="logo-title">Triage3AM</span>
+                    <span class="badge-v2">v2.0</span>
+                </div>
+            </div>
+            <div class="header-meta">
+                <div class="live-status">
+                    <div class="status-dot"></div>
+                    <span>Stream Engine Ready</span>
+                </div>
+                <div>Max Upload: <strong>100 MB</strong></div>
+                <div>Server: <strong>Threading HTTP/1.1</strong></div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Ingestion Panel -->
+        <div class="ingestion-grid">
+            <!-- Left: Preset Discovery & Upload -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">📂 Load Telemetry Preset</h2>
+                    <span id="preset-count-badge" style="font-size: 0.8rem; color: var(--text-muted)">Scanning...</span>
+                </div>
+                <select id="preset-selector" class="preset-select">
+                    <option value="">-- Choose a Preset Scenario --</option>
+                </select>
+
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                    <button id="download-preset-btn" class="btn" style="flex: 1; font-size: 0.8rem; justify-content: center;" title="Download selected preset file">
+                        ⬇️ Download Preset
+                    </button>
+                    <button id="download-all-presets-btn" class="btn" style="flex: 1; font-size: 0.8rem; justify-content: center;" title="Download all datasets as a .zip archive">
+                        📦 Download All (.zip)
+                    </button>
+                </div>
+
+                <div id="drop-zone" class="drop-zone">
+                    <input type="file" id="file-input" style="display: none;" accept=".log,.txt,.gz,.json">
+                    <div class="drop-icon">☁️</div>
+                    <div style="font-weight: 600; margin-bottom: 0.25rem;">Drop .log, .txt, or .gz file here</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">Zero-dependency streaming multipart upload up to 100MB</div>
+                </div>
+            </div>
+
+            <!-- Right: Raw Paste & Config -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">⚡ Raw Log Buffer</h2>
+                    <span id="line-counter" style="font-size: 0.8rem; color: var(--text-muted)">0 lines loaded</span>
+                </div>
+                <textarea id="raw-logs" class="log-textarea" placeholder="Paste raw telemetry or load from preset / drop file..."></textarea>
+
+                <div class="controls-bar">
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <label for="threshold-slider" style="font-size: 0.8rem; color: var(--text-muted);">Sensitivity:</label>
+                        <input type="range" id="threshold-slider" min="0.4" max="0.8" step="0.05" value="0.55">
+                        <span id="threshold-val" style="font-size: 0.8rem; font-family: monospace;">0.55</span>
+                    </div>
+                    <div style="display: flex; gap: 0.75rem;">
+                        <button id="clear-btn" class="btn">Clear</button>
+                        <button id="analyze-btn" class="btn btn-primary">🚀 Triage Outage</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Triage Results Section -->
+        <div id="results-section" class="results-section">
+
+            <!-- Primary Sev Banner -->
+            <div class="sev-banner">
+                <div style="flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span id="banner-sev-badge" class="sev-badge sev-P0">P0 CRITICAL OUTAGE</span>
+                        <span id="banner-started-at" style="font-size: 0.85rem; color: var(--text-muted);">Triggered at 03:02:11 UTC</span>
+                    </div>
+                    <h1 id="banner-root-cause" class="banner-title">Database Connection Pool Starvation</h1>
+                    <p id="banner-trigger-hypo" class="banner-trigger">Spike in concurrent traffic held all DB connection slots.</p>
+
+                    <!-- Runbook Command -->
+                    <div class="cmd-box">
+                        <span id="banner-cmd">kubectl scale deployment/db-pool-proxy --replicas=3</span>
+                        <button class="copy-btn" onclick="copyText('banner-cmd')">Copy Runbook Command</button>
+                    </div>
+                </div>
+                <div>
+                    <button id="export-modal-btn" class="btn btn-cyan">📄 Export Report</button>
+                </div>
+            </div>
+
+            <!-- Stats KPI Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div id="stat-lines" class="stat-val">10,000</div>
+                    <div class="stat-label">Lines Processed</div>
+                </div>
+                <div class="stat-card">
+                    <div id="stat-time" class="stat-val" style="color: var(--accent-cyan);">0.12s</div>
+                    <div class="stat-label">Time to Triage</div>
+                </div>
+                <div class="stat-card">
+                    <div id="stat-noise" class="stat-val" style="color: var(--accent-green);">99.9%</div>
+                    <div class="stat-label">Noise Filtered</div>
+                </div>
+                <div class="stat-card">
+                    <div id="stat-blast" class="stat-val" style="color: var(--accent-p1);">5</div>
+                    <div class="stat-label">Blast Radius (Services)</div>
+                </div>
+            </div>
+
+            <!-- Patient Zero Box -->
+            <div class="pz-box">
+                <div class="pz-header">
+                    <span>🎯 PATIENT ZERO (EARLIEST CRITICAL ANOMALY)</span>
+                    <span id="pz-meta">Line 2001 | Service: postgres-cluster</span>
+                </div>
+                <div id="pz-code" class="pz-code">2026-10-10T03:02:11.120Z [postgres-cluster] FATAL remaining connection slots are reserved for non-replication superuser connections (max_connections=100)</div>
+            </div>
+
+            <!-- Cascade Chain Timeline -->
+            <div class="card timeline-section">
+                <h3 class="card-title">🌊 Cascading Failure Propagation Chain</h3>
+                <div id="cascade-hops-container" class="cascade-hops"></div>
+            </div>
+
+            <!-- Incidents Cluster Table -->
+            <div class="card">
+                <h3 class="card-title">🔍 Clustered Root Incidents</h3>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Priority</th>
+                                <th>Primary Service</th>
+                                <th>Template Pattern</th>
+                                <th>Line Count</th>
+                                <th>% Total</th>
+                                <th>First Seen</th>
+                            </tr>
+                        </thead>
+                        <tbody id="incidents-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Export Modal -->
+    <div id="export-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="card-title">Export Incident Post-Mortem</h3>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn" onclick="switchExportFormat('slack')">Slack</button>
+                    <button class="btn" onclick="switchExportFormat('markdown')">Markdown</button>
+                    <button class="btn" onclick="switchExportFormat('csv')">CSV</button>
+                    <button class="btn" onclick="switchExportFormat('json')">JSON</button>
+                    <button class="btn" onclick="closeExportModal()">✕</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <pre id="export-preview" class="modal-pre"></pre>
+            </div>
+            <div style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                <span id="export-format-badge" style="font-size: 0.8rem; color: var(--text-muted);">Format: SLACK</span>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-cyan" onclick="downloadCurrentReport()">⬇️ Download File</button>
+                    <button class="btn btn-primary" onclick="copyText('export-preview')">Copy to Clipboard</button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- Quick 1-Click Demo Presets -->
-    <div class="presets-toolbar">
-      <span class="preset-label">⚡ 1-Click Presets:</span>
-      <button class="preset-btn" id="btnPreset1" onclick="loadPreset('ecommerce_cascade_10k.log')">
-        <span class="badge red">10k lines</span> DB Pool Starvation
-      </button>
-      <button class="preset-btn" id="btnPreset2" onclick="loadPreset('k8s_oom_cascade_10k.log')">
-        <span class="badge amber">10k lines</span> K8s OOM & CrashLoop
-      </button>
-    </div>
+    <script>
+        let currentReport = null;
+        let currentExportFormat = 'slack';
+        let currentExportContent = '';
 
-    <div class="header-actions">
-      <div class="live-clock" id="liveClock">03:00:00 UTC</div>
-      <button class="btn btn-secondary" onclick="exportSlackReport()">
-        📋 Copy Slack Brief
-      </button>
-    </div>
-  </header>
+        // Initialize application
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchPresets();
+            setupEventListeners();
+        });
 
-  <main class="main-container">
-    <!-- Log Input & Upload Section -->
-    <section class="ingestion-section">
-      <div class="ingestion-card">
-        <div class="card-header">
-          <div class="header-left">
-            <span class="terminal-dots">
-              <span class="dot red"></span>
-              <span class="dot yellow"></span>
-              <span class="dot green"></span>
-            </span>
-            <span class="card-title">Raw Log Stream Ingestion (Drain Algorithm & Rule-Free Template Mining)</span>
-          </div>
-          <div class="header-right">
-            <span class="stat-pill" id="lineCounter">0 lines loaded</span>
-            <label class="btn-file-upload">
-              📁 Upload .log / .txt
-              <input type="file" id="fileInput" accept=".log,.txt,.jsonl" onchange="handleFileUpload(event)">
-            </label>
-            <button class="btn btn-ghost" onclick="clearLogs()">Clear</button>
-          </div>
-        </div>
+        function setupEventListeners() {
+            const selector = document.getElementById('preset-selector');
+            selector.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    loadPreset(e.target.value);
+                }
+            });
 
-        <div class="textarea-wrapper">
-          <textarea id="logInput" placeholder="Paste 10,000 raw log lines here, or click one of the 1-Click Presets above to demo instantly..."></textarea>
-          <div class="drag-overlay" id="dragOverlay">Drop log file here</div>
-        </div>
+            document.getElementById('download-preset-btn').addEventListener('click', downloadSelectedPreset);
+            document.getElementById('download-all-presets-btn').addEventListener('click', downloadAllDatasets);
 
-        <div class="ingestion-actions">
-          <div class="features-hint">
-            <span>🛡️ Zero Hand-Written Regex</span>
-            <span>⚡ Sub-Second Ingestion</span>
-            <span>🎯 Patient Zero Isolation</span>
-            <span>🌐 Blast Radius Mapping</span>
-          </div>
-          <button class="btn btn-primary btn-large" id="btnAnalyze" onclick="analyzeLogs()">
-            <span class="btn-icon">⚡</span> Analyze Outage & Triage
-          </button>
-        </div>
-      </div>
-    </section>
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
 
-    <!-- Telemetry & Metrics Stats Ribbon (Shown after triage) -->
-    <section class="telemetry-section" id="telemetrySection" style="display: none;">
-      <div class="metric-card">
-        <span class="metric-label">RAW LOGS INGESTED</span>
-        <div class="metric-value" id="valTotalLines">10,000</div>
-        <span class="metric-sub" id="valErrorLines">1,489 errors filtered</span>
-      </div>
-      <div class="metric-card highlight-green">
-        <span class="metric-label">NOISE REDUCTION</span>
-        <div class="metric-value text-green" id="valNoiseReduction">99.92%</div>
-        <span class="metric-sub">10k lines ➔ handful of incidents</span>
-      </div>
-      <div class="metric-card">
-        <span class="metric-label">TRIAGE LATENCY</span>
-        <div class="metric-value text-cyan" id="valTriageSpeed">0.18s</div>
-        <span class="metric-sub">Fastest MTTD on-call</span>
-      </div>
-      <div class="metric-card highlight-red">
-        <span class="metric-label">OUTAGE SEVERITY</span>
-        <div class="metric-value text-red" id="valSeverityStatus">P0 CRITICAL</div>
-        <span class="metric-sub" id="valServicesCount">5 services infected</span>
-      </div>
-    </section>
+            dropZone.addEventListener('click', () => fileInput.click());
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                if (e.dataTransfer.files.length > 0) {
+                    uploadFile(e.dataTransfer.files[0]);
+                }
+            });
 
-    <!-- Executive Outage War Room Card -->
-    <section class="war-room-section" id="warRoomSection" style="display: none;">
-      <div class="war-room-card">
-        <div class="war-room-banner">
-          <div class="banner-badge">🚨 ROOT CAUSE IDENTIFIED</div>
-          <h2 class="war-room-title" id="outageTitle">Database Connection Pool Starvation</h2>
-          <div class="war-room-meta">
-            <span>📅 Outage Started: <strong id="outageStartTime">2026-10-10 03:02:11 UTC</strong></span>
-            <span>🎯 Blast Radius: <strong id="outageServicesList">postgres-cluster, order-service, payment-gateway, api-gateway</strong></span>
-          </div>
-        </div>
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    uploadFile(e.target.files[0]);
+                }
+            });
 
-        <div class="war-room-grid">
-          <!-- Patient Zero Column -->
-          <div class="grid-col patient-zero-box">
-            <div class="col-title">
-              <span>🎯 Patient Zero (Earliest Anomalous Log Line)</span>
-              <span class="badge red" id="patientZeroLineNo">Line #2001</span>
-            </div>
-            <div class="code-terminal" id="patientZeroRaw">
-              2026-10-10T03:02:11.427Z [postgres-cluster] FATAL remaining connection slots are reserved for non-replication superuser connections (max_connections=100) pid=4921
-            </div>
-            <div class="diagnosis-narrative" id="diagnosisNarrative">
-              Spike in concurrent traffic or long-running transaction held all DB connection slots. Downstream APIs cannot acquire database handles, backing up checkout request queues.
-            </div>
-          </div>
+            document.getElementById('raw-logs').addEventListener('input', updateLineCounter);
 
-          <!-- Suggested Runbook & Remediation -->
-          <div class="grid-col remediation-box">
-            <div class="col-title">
-              <span>🛠️ Immediate Runbook & Remediation</span>
-              <button class="btn btn-xs btn-copy" onclick="copyCommand()">📋 Copy Command</button>
-            </div>
-            <div class="code-terminal command-terminal" id="remediationCommand">
-              kubectl scale deployment/db-pool-proxy --replicas=3
-            </div>
-            <div class="runbook-steps" id="runbookSteps">
-              1. Bump `max_connections` or connection pool size.<br>
-              2. Terminate idle/stuck transactions.<br>
-              3. Scale PgBouncer pooler replicas.
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
+            document.getElementById('threshold-slider').addEventListener('input', (e) => {
+                document.getElementById('threshold-val').textContent = e.target.value;
+            });
 
-    <!-- Cascade Waterfall Timeline -->
-    <section class="cascade-section" id="cascadeSection" style="display: none;">
-      <div class="section-header">
-        <h3>🌊 Chronological Blast Radius Cascade</h3>
-        <span class="subtitle">How the root trigger propagated across service boundaries</span>
-      </div>
-      <div class="cascade-timeline" id="cascadeTimeline">
-        <!-- Rendered dynamically -->
-      </div>
-    </section>
+            document.getElementById('analyze-btn').addEventListener('click', runTriage);
+            document.getElementById('clear-btn').addEventListener('click', () => {
+                document.getElementById('raw-logs').value = '';
+                updateLineCounter();
+                document.getElementById('results-section').style.display = 'none';
+            });
 
-    <!-- Ranked Actionable Incidents Grid -->
-    <section class="incidents-section" id="incidentsSection" style="display: none;">
-      <div class="section-header">
-        <h3>📋 Actionable Incidents Ranked by Impact</h3>
-        <span class="subtitle">10,000 lines reduced to distinct actionable clusters</span>
-      </div>
-      <div class="incidents-list" id="incidentsList">
-        <!-- Rendered dynamically -->
-      </div>
-    </section>
-  </main>
+            document.getElementById('export-modal-btn').addEventListener('click', openExportModal);
+        }
 
-  <!-- Slack Export Modal -->
-  <div class="modal-backdrop" id="slackModal" style="display: none;" onclick="closeSlackModal(event)">
-    <div class="modal-box" onclick="event.stopPropagation()">
-      <div class="modal-header">
-        <h3>📋 PagerDuty / Slack Incident Post</h3>
-        <button class="btn-close" onclick="closeSlackModal()">&times;</button>
-      </div>
-      <textarea id="slackTextarea" readonly></textarea>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeSlackModal()">Close</button>
-        <button class="btn btn-primary" onclick="copySlackText()">Copy to Clipboard</button>
-      </div>
-    </div>
-  </div>
+        function downloadSelectedPreset() {
+            const sel = document.getElementById('preset-selector');
+            const val = sel.value;
+            if (!val) {
+                alert("Please choose a preset scenario from the dropdown to download.");
+                return;
+            }
+            window.location.href = `/api/v2/download?file=${encodeURIComponent(val)}`;
+        }
 
-  <div class="toast" id="toast">Notification</div>
+        function downloadAllDatasets() {
+            window.location.href = '/api/v2/download/bundle';
+        }
 
-  <script src="app.js"></script>
+        function downloadCurrentReport() {
+            if (!currentExportContent) return;
+            const extensions = {
+                'slack': 'txt',
+                'markdown': 'md',
+                'csv': 'csv',
+                'json': 'json'
+            };
+            const ext = extensions[currentExportFormat] || 'txt';
+            const priority = currentReport?.incidents?.[0]?.priority || 'P0';
+            const filename = `triage_report_${priority}_${Date.now()}.${ext}`;
+
+            const blob = new Blob([currentExportContent], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        async function fetchPresets() {
+            try {
+                const res = await fetch('/api/v2/presets');
+                const data = await res.json();
+                const selector = document.getElementById('preset-selector');
+                selector.innerHTML = '<option value="">-- Choose a Preset Scenario --</option>';
+
+                (data.presets || []).forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.textContent = `${p.title} (${p.lines ? p.lines.toLocaleString() : 'N/A'} lines | ${p.size_formatted || ''})`;
+                    selector.appendChild(opt);
+                });
+
+                document.getElementById('preset-count-badge').textContent = `${data.count || 0} presets found`;
+            } catch (err) {
+                console.error("Failed to load presets:", err);
+            }
+        }
+
+        async function loadPreset(name) {
+            try {
+                const res = await fetch(`/api/load-preset?name=${encodeURIComponent(name)}`);
+                const data = await res.json();
+                if (data.content) {
+                    document.getElementById('raw-logs').value = data.content;
+                    updateLineCounter();
+                    runTriage();
+                }
+            } catch (err) {
+                alert("Failed loading preset: " + err.message);
+            }
+        }
+
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('threshold', document.getElementById('threshold-slider').value);
+
+            const analyzeBtn = document.getElementById('analyze-btn');
+            analyzeBtn.textContent = '⏳ Uploading & Triaging...';
+            analyzeBtn.disabled = true;
+
+            try {
+                const res = await fetch('/api/v2/analyze/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const report = await res.json();
+                if (report.error) throw new Error(report.error);
+                renderReport(report);
+            } catch (err) {
+                alert("Upload triage failed: " + err.message);
+            } finally {
+                analyzeBtn.textContent = '🚀 Triage Outage';
+                analyzeBtn.disabled = false;
+            }
+        }
+
+        async function runTriage() {
+            const rawLogs = document.getElementById('raw-logs').value;
+            if (!rawLogs.trim()) {
+                alert("Please provide log content or load a preset scenario.");
+                return;
+            }
+
+            const threshold = parseFloat(document.getElementById('threshold-slider').value);
+            const analyzeBtn = document.getElementById('analyze-btn');
+            analyzeBtn.textContent = '⏳ Analyzing...';
+            analyzeBtn.disabled = true;
+
+            try {
+                const res = await fetch('/api/v2/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ logs: rawLogs, threshold: threshold })
+                });
+                const report = await res.json();
+                if (report.error) throw new Error(report.error);
+                renderReport(report);
+            } catch (err) {
+                alert("Triage error: " + err.message);
+            } finally {
+                analyzeBtn.textContent = '🚀 Triage Outage';
+                analyzeBtn.disabled = false;
+            }
+        }
+
+        function renderReport(report) {
+            currentReport = report;
+            const s = report.summary || {};
+            const incidents = report.incidents || [];
+            const p0 = incidents[0] || {};
+            const diag = p0.diagnosis || {};
+
+            document.getElementById('results-section').style.display = 'block';
+
+            // Banner
+            const sevBadge = document.getElementById('banner-sev-badge');
+            sevBadge.textContent = `${p0.priority || 'P0'} ${p0.priority_label || 'CRITICAL OUTAGE'}`;
+            sevBadge.className = `sev-badge sev-${p0.priority || 'P0'}`;
+            document.getElementById('banner-started-at').textContent = `Outage started: ${s.outage_started_at || '03:00 UTC'}`;
+            document.getElementById('banner-root-cause').textContent = s.root_cause_summary || 'System Fault';
+            document.getElementById('banner-trigger-hypo').textContent = diag.trigger || '';
+            document.getElementById('banner-cmd').textContent = diag.command || 'kubectl get pods -A';
+
+            // KPI Stats
+            document.getElementById('stat-lines').textContent = (s.total_lines_ingested || 0).toLocaleString();
+            document.getElementById('stat-time').textContent = `${s.time_to_triage_seconds || 0.1}s`;
+            document.getElementById('stat-noise').textContent = `${s.noise_reduction_percentage || 0}%`;
+            document.getElementById('stat-blast').textContent = s.total_services_impacted || (s.services_impacted || []).length;
+
+            // Patient Zero
+            const pz = p0.patient_zero || {};
+            document.getElementById('pz-meta').textContent = `Line ${pz.line_no || 'N/A'} | Service: ${pz.service || 'N/A'} | Time: ${pz.timestamp || 'N/A'}`;
+            document.getElementById('pz-code').textContent = pz.raw || 'No anomaly recorded';
+
+            // Cascade Chain
+            const cascadeContainer = document.getElementById('cascade-hops-container');
+            cascadeContainer.innerHTML = '';
+            (report.cascade_chain || []).forEach(hop => {
+                const el = document.createElement('div');
+                el.className = `cascade-hop ${hop.is_trigger ? 'hop-trigger' : ''}`;
+                el.innerHTML = `
+                    <div class="hop-time">${hop.time}</div>
+                    <div class="hop-service">${hop.service} ${hop.is_trigger ? '🎯 [TRIGGER]' : ''}</div>
+                    <div class="hop-event">${hop.event}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">${hop.impact}</div>
+                    <span class="hop-badge sev-${hop.severity}">${hop.severity}</span>
+                `;
+                cascadeContainer.appendChild(el);
+            });
+
+            // Incidents Table
+            const tbody = document.getElementById('incidents-table-body');
+            tbody.innerHTML = '';
+            incidents.forEach(inc => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>#${inc.rank}</strong></td>
+                    <td><span class="sev-badge sev-${inc.priority}">${inc.priority}</span></td>
+                    <td><code style="color: #38bdf8;">${inc.primary_service}</code></td>
+                    <td><code>${escapeHtml(inc.template.substring(0, 75))}...</code></td>
+                    <td><strong>${inc.line_count.toLocaleString()}</strong></td>
+                    <td>${inc.percentage_of_total}%</td>
+                    <td style="color: var(--text-muted);">${inc.first_seen}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Smooth scroll to results
+            document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function updateLineCounter() {
+            const text = document.getElementById('raw-logs').value;
+            const lines = text ? text.split('\n').length : 0;
+            document.getElementById('line-counter').textContent = `${lines.toLocaleString()} lines loaded`;
+        }
+
+        async function openExportModal() {
+            if (!currentReport) return;
+            document.getElementById('export-modal').style.display = 'flex';
+            switchExportFormat('slack');
+        }
+
+        function closeExportModal() {
+            document.getElementById('export-modal').style.display = 'none';
+        }
+
+        async function switchExportFormat(fmt) {
+            if (!currentReport) return;
+            currentExportFormat = fmt;
+            const badge = document.getElementById('export-format-badge');
+            if (badge) badge.textContent = `Format: ${fmt.toUpperCase()}`;
+
+            const preview = document.getElementById('export-preview');
+            preview.textContent = 'Generating export...';
+
+            try {
+                const res = await fetch('/api/v2/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ format: fmt, report: currentReport })
+                });
+                const data = await res.json();
+                currentExportContent = data.content || data.markdown || JSON.stringify(data, null, 2);
+                preview.textContent = currentExportContent;
+            } catch (err) {
+                preview.textContent = "Export error: " + err.message;
+            }
+        }
+
+        function copyText(elementId) {
+            const el = document.getElementById(elementId);
+            const text = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ? el.value : el.textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                alert("Copied to clipboard!");
+            });
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+    </script>
 </body>
 </html>

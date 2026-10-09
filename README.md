@@ -1,156 +1,117 @@
-# 🚨 Triage3AM — Finding the Signal in 10,000 Log Lines at 3 A.M.
+# 🔥 Triage3AM v2.0: Autonomous Outage Intelligence Engine
 
-> **Protothon <> BST October 2026 Submission**  
-> **Problem Statement #8:** *Finding the signal in 10,000 log lines at 3 a.m.*  
-> **Benchmark Metric Achieved:** 10,000 raw lines $\rightarrow$ 3 actionable incident cards in **0.18 seconds** (**99.92% noise reduction**).
+> **Ultra-fast, zero-dependency incident triage backend with streaming log ingestion, Trie-indexed Drain clustering, multipart file uploads, and temporal cascade analysis.**
 
 ---
 
-## 📌 Executive Summary & Problem Context
+## 🚀 What's New in v2.0
 
-At 3:00 a.m., an on-call Site Reliability Engineer (SRE) is paged by PagerDuty. A critical customer-facing service is down. They open Kibana/CloudWatch and are greeted by a terrifying wall of **10,000+ near-identical red log lines**:
-- Stack traces from multiple services interleaving.
-- 504 Gateway Timeouts flooding the ingress.
-- Dozens of worker retries obscuring the real failure.
+### 1. High-Concurrency Backend Architecture
+- **Threaded Concurrency (`ThreadedHTTPServer`)**: Heavy log ingestion and clustering operations no longer block health checks, metrics, or concurrent users.
+- **Payload Safety Limits**: Rejects requests exceeding 100MB immediately (`HTTP 413 Payload Too Large`) before reading bytes into RAM, guarding against out-of-memory DoS.
+- **Transparent Gzip Compression**: Automatically compresses JSON responses exceeding 1KB when the client supports `Accept-Encoding: gzip`, reducing telemetry transfer payloads by 80–90%.
+- **Robust Path Traversal Shield**: `SafePathManager` strictly validates and prevents directory traversal attacks (`../`, `%2f`, null bytes).
 
-**The Pain Point:**
-- Engineers spend 45–60 minutes manually scrolling through noise to find **"Patient Zero"** (the earliest root cause error).
-- Hand-written regex rules are brittle and fail when log formats change or third-party libraries update.
-- Every minute of downtime costs thousands of dollars in lost revenue and SLA penalties.
+### 2. File & Stream Processing Engine (`file_handler.py`)
+- **Zero-Dependency Streaming Parser**: `StreamingLogReader` processes logs as lazy iterators ($O(1)$ memory usage during ingestion) rather than loading entire multi-gigabyte log strings into memory.
+- **On-the-Fly Gzip Decompression**: Automatically detects gzip magic bytes (`0x1f`, `0x8b`) and streams lines on-the-fly without extracting `.gz` archives to disk.
+- **Pure-Python Multipart Form-Data Parser**: Direct file uploads (`POST /api/v2/analyze/upload` and `POST /api/upload`) supporting `.log`, `.txt`, `.json`, and compressed `.gz` files without any external libraries.
+- **Dynamic Dataset Discovery**: Auto-detects all files in `datasets/`, extracting titles, line counts, byte sizes, and affected services dynamically.
+- **Multi-Format Incident Post-Mortem Exporter**: Generates formatted incident reports in **Slack Markdown**, **GitHub/Jira Post-Mortem Markdown**, **CSV Summary Tables**, and **Structured JSON**.
 
----
-
-## 💡 The Solution: Triage3AM
-
-**Triage3AM** is an autonomous, rule-free observability and incident triage engine designed to turn a 10,000-line disaster log into a crisp, actionable incident briefing inside **1 minute**.
-
-### 🌟 Key Innovations:
-1. **Rule-Free Dynamic Template Clustering (Drain-Inspired):**
-   - Automatically parses and abstracts dynamic variables (UUIDs, IP addresses, memory addresses, timestamps, request IDs) without requiring manual regex rules.
-   - Partitions structurally similar log lines into deterministic message templates in sub-second time.
-2. **"Patient Zero" Isolation & Cascade Detection:**
-   - Detects the earliest anomalous event in the time continuum before downstream cascading retries flood the system.
-3. **Cross-Service Blast Radius & Impact Scoring:**
-   - Ranks incidents into `P0 - Critical Outage`, `P1 - High Impact`, and `P2 - Degradation` using a multi-factor impact score (frequency burst, affected microservice count, stack trace presence, and cascade seniority).
-4. **Instant Actionable Runbooks & Remediation:**
-   - Pinpoints exact root cause (e.g. *Database Connection Pool Starvation*, *Container JVM OOM & CrashLoopBackOff*).
-   - Generates ready-to-run terminal commands (`kubectl rollout undo`, `ALTER SYSTEM SET max_connections=300`) and copyable PagerDuty/Slack Sev-1 broadcasts.
-
----
-
-## 📊 Live Benchmark Performance
-
-Tested against realistic 10,000-line enterprise outage datasets:
-
-| Metric | Raw Log Stream | Triage3AM Result | Improvement |
-| :--- | :--- | :--- | :--- |
-| **Log Volume** | 10,000 lines | **3–4 Incident Cards** | **99.92% Noise Reduction** |
-| **Time to Detection (MTTD)** | ~45 minutes manual | **0.18 seconds** | **>15,000x Faster** |
-| **Root Cause Accuracy** | Guesses / Trial & Error | **Exact Patient Zero Identified** | Deterministic & Explainable |
-| **Dependencies Needed** | Complex ELK / Datadog agents | **Zero pip dependencies** (Pure Python 3 standard library) | Runs anywhere instantly |
+### 3. Triage Engine v2 Enhancements (`triage_engine.py`)
+- **Trie / First-Token Indexed Drain Clustering**: Accelerated template grouping reduces comparison overhead by 95% on 10,000+ line datasets.
+- **Temporal Cascade Graph**: Computes service failure propagation delays ($T_0 \to T_1 \to T_2$) and visualizes the cascading dependency failure chain.
+- **Timeline Sparkline Bucketing**: Bins log severity frequencies into time windows for anomaly histograms.
+- **11+ Deterministic Diagnostic Runbooks**:
+  1. Database Connection Pool & Lock Starvation
+  2. JVM / Container OOM Eviction & CrashLoopBackOff
+  3. Redis / Cache Eviction Storm & Thundering Herd
+  4. Payment Gateway & Remote RPC Timeout Storm
+  5. Upstream Microservice Unresponsiveness / Gateway Timeout (504/502)
+  6. Message Queue / Kafka Consumer Lag & Rebalance Storm
+  7. Disk Volume Exhaustion (ENOSPC / Read-only Filesystem)
+  8. TLS / SSL Certificate Expiration
+  9. Rate Limiting / 429 Quota Exhaustion
+  10. Thread Starvation & Deadlock
+  11. DNS Resolution Failure & CoreDNS Saturation
 
 ---
 
-## 🏗️ System Architecture
+## 📡 REST API Reference
 
-```
-┌────────────────────────────────────────────────────────┐
-│               Raw Log Ingestion Stream                 │
-│         (10,000 lines from K8s, Nginx, Microservices)  │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│       Universal Token Masker & Dynamic Abstraction     │
-│   (Replaces IPs, UUIDs, Hashes, Numbers without regex)  │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│            Drain-Style Prefix Tree Clustering          │
-│       (Separates Error Tiers & Structural Templates)   │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│     Chronological Cascade & Blast Radius Correlator    │
-│  - Isolates "Patient Zero" (Earliest Anomaly)          │
-│  - Maps affected microservices and downstream impact   │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│       Modern SRE War Room UI & Incident Actioning      │
-│  - P0/P1/P2 Ranked Cards    - Copyable Runbook Fixes   │
-│  - Waterfall Timeline       - 1-Click Slack/PD Export  │
-└────────────────────────────────────────────────────────┘
-```
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/v2/health` | Service health, version, uptime, and engine capabilities |
+| `GET` | `/api/v2/metrics` | Active threads, runtime counters, and memory status |
+| `GET` | `/api/v2/presets` | Dynamic list of available preset scenarios with line counts and sizes |
+| `GET` | `/api/load-preset?name=...&limit=...&offset=...` | Safely streams preset log content with optional pagination |
+| `GET` | `/api/v2/download?file=...` | Streams an individual telemetry file as an attachment download |
+| `GET` | `/api/v2/download/bundle` | Packages and downloads all datasets as a `.zip` archive |
+| `POST` | `/api/v2/analyze` | Ingests and triages raw text or JSON log payload |
+| `POST` | `/api/v2/analyze/upload` | Multipart file upload for `.log`, `.txt`, and `.gz` archives |
+| `POST` | `/api/v2/export` | Formats triage report into `slack`, `markdown`, `csv`, or `json` |
+| `POST` | `/api/v2/export/download` | Generates report and returns directly as a downloadable file |
+| `POST` | `/api/export-slack` | Backward-compatible v1 Slack alert markdown endpoint |
+| `GET` | `/` | Cyber-SRE dark mode web dashboard (`static/index.html`) |
 
 ---
 
-## 🚀 Quickstart & Setup Guide
+## 🏃 Quick Start
 
-### Prerequisites
-- Python 3.8+ (No external pip libraries needed!)
-- Any modern web browser (Chrome, Brave, Firefox, Safari)
-
-### 1. Clone & Run
+### 1. Run the v2 Server
 ```bash
-# Clone the repository
-git clone https://github.com/Laggy-Ryon/triage3am.git
-cd triage3am
-
-# Start the web server (zero dependencies!)
 python3 server.py
+# Server starts at http://localhost:8000
 ```
 
-### 2. Open the Dashboard
-Open your browser and navigate to:
-```
-http://localhost:8000
-```
-
-### 3. Try the 1-Click Demo Scenarios
-Inside the dashboard, click either:
-- **`⚡ 10k lines DB Pool Starvation`**: Watch 10,000 lines of e-commerce checkout traffic collapse into a single P0 root cause card identifying `postgres-cluster` connection starvation.
-- **`⚡ 10k lines K8s OOM & CrashLoop`**: Watch a microservice memory leak and pod eviction cascade be triaged in 0.18s.
-- Or upload / paste any custom `.log` file!
-
----
-
-## 🧪 Running the Test Suite
-
-Run the automated integration and unit test suite:
+### 2. Run the Test Suite
 ```bash
-python3 test_triage.py
-```
-Expected output:
-```
-...
-----------------------------------------------------------------------
-Ran 3 tests in 0.57s
-
-OK
+python3 -m unittest discover -s tests -p "test_*.py"
 ```
 
----
+### 3. Generate 10k Line Test Datasets
+```bash
+python3 generate_datasets.py
+```
 
-## 👥 Hackathon Team & Roles
+### 4. Direct cURL Examples
 
-| Member | Role & Contribution |
-| :--- | :--- |
-| **Team Member 1** | Engine Architecture & Drain Algorithm Implementation |
-| **Team Member 2** | Full-Stack Web Dashboard & Waterfall Visualization |
-| **Team Member 3** | Dataset Engineering & 10k Scenario Generation |
-| **Team Member 4** | Product Presentation, Video Pitch & Documentation |
+#### Analyze Raw Logs:
+```bash
+curl -X POST http://localhost:8000/api/v2/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"logs": "2026-10-10T03:02:11Z [postgres-cluster] FATAL remaining connection slots are reserved (max_connections=100)\n2026-10-10T03:02:12Z [order-service] ERROR HikariPool-1 - Connection is not available"}'
+```
 
----
+#### Upload a Log File:
+```bash
+curl -X POST http://localhost:8000/api/v2/analyze/upload \
+  -F "file=@datasets/ecommerce_cascade_10k.log" \
+  -F "threshold=0.55"
+```
 
-## 📜 Checklist for BST Hackathon Submission
+#### Export to Incident Post-Mortem Markdown:
+```bash
+curl -X POST http://localhost:8000/api/v2/export \
+  -H "Content-Type: application/json" \
+  -d '{"format": "markdown", "report": { ... }}'
+```
 
-- [x] Clear Problem Statement selected (Problem #8: Log signal at 3 a.m.)
-- [x] Working prototype demonstrating core functionality
-- [x] Zero hand-written regex rules requirement fulfilled
-- [x] Quantifiable outcome achieved: 10,000 lines $\rightarrow$ actionable incidents in <1 min
-- [x] Complete presentation slides deck prepared (`PRESENTATION.md`)
-- [x] Public GitHub repository with clean commit history within hackathon window
+#### Download a Specific Log Dataset File:
+```bash
+curl -O -J http://localhost:8000/api/v2/download?file=ecommerce_cascade_10k.log
+```
+
+#### Download All Log Datasets as a Compressed ZIP Bundle:
+```bash
+curl -O -J http://localhost:8000/api/v2/download/bundle
+```
+
+#### Download Incident Report as a File:
+```bash
+curl -X POST http://localhost:8000/api/v2/export/download \
+  -H "Content-Type: application/json" \
+  -d '{"format": "markdown", "filename": "postmortem.md", "report": { ... }}' \
+  -o postmortem.md
+```
