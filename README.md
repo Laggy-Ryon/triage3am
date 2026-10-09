@@ -1,10 +1,10 @@
-# 🔥 Triage3AM v2.0: Autonomous Outage Intelligence Engine
+# Triage3AM v2.0: Autonomous Outage Intelligence Engine
 
 > **Ultra-fast, zero-dependency incident triage backend with streaming log ingestion, Trie-indexed Drain clustering, multipart file uploads, and temporal cascade analysis.**
 
 ---
 
-## 🚀 What's New in v2.0
+## What's New in v2.0
 
 ### 1. High-Concurrency Backend Architecture
 - **Threaded Concurrency (`ThreadedHTTPServer`)**: Heavy log ingestion and clustering operations no longer block health checks, metrics, or concurrent users.
