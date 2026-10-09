@@ -55,6 +55,17 @@
 | `POST` | `/api/export-slack` | Backward-compatible v1 Slack alert markdown endpoint |
 | `GET` | `/` | Cyber-SRE dark mode web dashboard (`static/index.html`) |
 
+
+
+How I Approached the Problem:
+
+Focused on "Patient Zero", Not Symptoms: In a 10,000-line outage cascade, 99% of logs are downstream symptoms (timeouts, retries, 504 errors). Rather than counting which error appeared most frequently, the architecture was designed to find the chronological catalyst—the very first anomalous failure before cascading retries obscured it.
+
+Rule-Free, Drain-Inspired Template Clustering: Hand-written regex rules break whenever log formats change. Instead, I built an algorithm that dynamically abstracts variable tokens (UUIDs, IP addresses, memory addresses, timestamps, numeric IDs) to group structurally identical log lines into clean templates without static rules.
+
+Multi-Factor Priority Scoring: Prioritized incidents through a multi-factor impact score factoring in chronological seniority, burst frequency, cross-service blast radius, and stack trace severity—preventing high-volume retry loops from overshadowing root causes.
+
+Zero-Dependency Core: Built the entire engine using pure Python standard library to ensure instant execution, zero pip installation friction, and seamless portability across local CLI, Docker, and serverless environments.
 ---
 
 ## Quick Start
